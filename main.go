@@ -1,56 +1,19 @@
 package main
 
 import (
-	"bufio"
-	"fmt"
 	"os"
-	"os/exec"
-	"strings"
+
+	"github.com/NouemanKHAL/go-shell/internal/shell"
 )
 
-func handleError(err error) {
-	os.Stderr.WriteString(err.Error())
-	os.Exit(1)
-}
-
-func handlePrompt() {
-	fmt.Printf("go-shell > $ ")
-	r := bufio.NewReader(os.Stdin)
-
-	input, _, err := r.ReadLine()
-	if err != nil {
-		handleError(err)
-	}
-
-	trimmedIn := strings.TrimSpace(string(input))
-	fields := strings.Fields(trimmedIn)
-
-	command := fields[0]
-	args := fields[1:]
-
-	if command == "exit" {
-		os.Exit(0)
-	}
-	_, err = exec.LookPath(command)
-	if err != nil {
-		fmt.Println("go-shell: command not found: ", command)
-		return
-	}
-
-	cmd := exec.Command(command, args...)
-
-	cmd.Stdout = os.Stdout
-	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
-
-	err = cmd.Run()
-	if err != nil {
-		fmt.Println(err)
-	}
-}
-
 func main() {
+	sh, err := shell.NewShell()
+	if err != nil {
+		os.Stderr.WriteString(err.Error())
+		os.Exit(1)
+	}
+
 	for {
-		handlePrompt()
+		sh.Prompt()
 	}
 }
