@@ -2,6 +2,7 @@ package shell
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -63,6 +64,45 @@ func (s *Shell) changeDir(dir string) error {
 	}
 	s.workingDir = dir
 	return nil
+
+}
+
+func (s *Shell) parseCommand(input string) *exec.Cmd {
+	fields := strings.Fields(input)
+
+	commandName := fields[0]
+	args := fields[1:]
+
+	return exec.Command(commandName, args...)
+}
+
+func (s *Shell) handlePipeCommands(input string) error {
+	inputs := strings.Split(input, "|")
+
+	var commands []*exec.Cmd
+	for _, input := range inputs {
+		commands = append(commands, s.parseCommand(input))
+	}
+
+	for i, cmd := range commands {
+		buf := &bytes.Buffer{}
+
+		if i == len(commands)-1 {
+			cmd.Stdout = os.Stdout
+		} else {
+			cmd.Stdout = buf
+		}
+
+		err := cmd.Run()
+		if err != nil {
+			return err
+		}
+		if i+1 < len(commands) {
+			commands[i+1].Stdin = buf
+		}
+	}
+
+	return nil
 }
 
 func (s *Shell) Prompt() {
@@ -70,6 +110,13 @@ func (s *Shell) Prompt() {
 	input, err := s.readInput()
 	if err != nil {
 
+	}
+
+	// support pipes
+
+	if strings.Contains(input, "|") {
+		s.handlePipeCommands(input)
+		return
 	}
 
 	// parse the input
