@@ -2,6 +2,7 @@ package shell
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,6 +22,17 @@ func NewShell() (*Shell, error) {
 
 	return &Shell{
 		workingDir: pwd}, nil
+}
+
+func (s *Shell) Start(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			s.Prompt()
+		}
+	}
 }
 
 func (s *Shell) readInput() (string, error) {
@@ -57,8 +69,7 @@ func (s *Shell) Prompt() {
 	s.printPrompt()
 	input, err := s.readInput()
 	if err != nil {
-		os.Stderr.WriteString(err.Error())
-		return
+
 	}
 
 	// parse the input

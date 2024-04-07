@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 
 	"github.com/NouemanKHAL/go-shell/internal/shell"
@@ -13,7 +14,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	for {
-		sh.Prompt()
-	}
+	ctx := context.TODO()
+	sh.Start(ctx)
 }
