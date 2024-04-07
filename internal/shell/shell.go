@@ -10,11 +10,19 @@ import (
 	"os/signal"
 	"path"
 	"strings"
+	"unicode"
 )
 
+const historyFilename = ".gosh_history"
+
 type Shell struct {
-	workingDir string
-	signalChan chan os.Signal
+	workingDir      string
+	signalChan      chan os.Signal
+	historyFilepath string
+	history         []string
+	historyPos      int
+	currentInput    string
+	lastPrinted     int
 }
 
 func NewShell() (*Shell, error) {
@@ -23,13 +31,48 @@ func NewShell() (*Shell, error) {
 		return nil, err
 	}
 
+	userDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	historyPath := path.Join(userDir, historyFilename)
+
 	return &Shell{
-		workingDir: pwd,
-		signalChan: make(chan os.Signal)}, nil
+		workingDir:      pwd,
+		signalChan:      make(chan os.Signal),
+		historyFilepath: historyPath,
+	}, nil
+}
+
+func (s *Shell) loadHistory() error {
+	data, err := os.ReadFile(s.historyFilepath)
+	if err != nil {
+		return err
+	}
+
+	s.history = strings.Split(string(data), "\n")
+	return nil
+}
+
+func (s *Shell) isValidChar(b byte) bool {
+	if b == '\n' {
+		return true
+	}
+	r := rune(b)
+	return unicode.IsSpace(r) || unicode.IsDigit(r) || unicode.IsLetter(r) || unicode.IsPunct(r) || unicode.IsSymbol(r)
+}
+func (s *Shell) saveHistory() error {
+	data := strings.Join(s.history, "\n")
+	return os.WriteFile(s.historyFilepath, []byte(data), os.ModePerm)
 }
 
 func (s *Shell) Start(ctx context.Context) error {
 	signal.Notify(s.signalChan, os.Interrupt)
+
+	s.loadHistory()
+	defer s.saveHistory()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -40,20 +83,85 @@ func (s *Shell) Start(ctx context.Context) error {
 	}
 }
 
-func (s *Shell) readInput() (string, error) {
-	r := bufio.NewReader(os.Stdin)
+func (s *Shell) previousCommand() string {
+	s.historyPos += 1
+	idx := len(s.history) - s.historyPos
+	if idx >= 0 && idx < len(s.history) {
+		cmd := s.history[idx]
+		return cmd
+	}
+	fmt.Print("\a")
+	return s.currentInput
+}
+func (s *Shell) nextCommand() string {
+	s.historyPos -= 1
+	idx := len(s.history) - s.historyPos
+	if idx >= 0 && idx < len(s.history) {
+		cmd := s.history[idx]
+		return cmd
+	}
+	fmt.Print("\a")
+	return s.currentInput
+}
 
-	input, _, err := r.ReadLine()
-	if err != nil {
-		return "", err
+func (s *Shell) readInput() (string, error) {
+	scanner := bufio.NewReader(os.Stdin)
+
+	s.currentInput = ""
+	s.historyPos = 0
+
+	// disable input buffering
+	exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
+	// do not display entered characters on the screen
+	exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
+
+	var prev byte
+	for {
+		s.printPrompt()
+		b, err := scanner.ReadByte()
+		if err != nil {
+			fmt.Println("error: ", err.Error())
+			break
+		}
+		if prev == '[' && b == 'A' {
+			s.currentInput = s.previousCommand()
+			prev = 0
+			continue
+		}
+		if prev == '[' && b == 'B' {
+			s.currentInput = s.nextCommand()
+			prev = 0
+			continue
+		}
+
+		// backspace
+		if b == 127 {
+			newIndex := max(0, len(s.currentInput)-1)
+			s.currentInput = s.currentInput[:newIndex]
+		} else if s.isValidChar(b) {
+			s.currentInput += string(b)
+		}
+
+		// enter hit
+		if b == '\n' {
+			break
+		}
+
+		prev = b
 	}
 
-	trimmedInput := strings.TrimSpace(string(input))
+	s.printPrompt()
+
+	trimmedInput := strings.TrimSpace(string(s.currentInput))
 	return trimmedInput, nil
 }
 
 func (s *Shell) printPrompt() {
-	fmt.Printf("go-shell > $ ")
+	if s.lastPrinted > 0 {
+		fmt.Printf("\033[2K\r")
+	}
+	fmt.Printf("gosh > $ %s", s.currentInput)
+	s.lastPrinted = 1
 }
 
 func (s *Shell) changeDir(dir string) error {
@@ -126,15 +234,22 @@ func (s *Shell) handlePipeCommands(input string) error {
 	return nil
 }
 
+func (s *Shell) addToHistory(input string) {
+	s.history = append(s.history, input)
+}
+
 func (s *Shell) Prompt() {
-	s.printPrompt()
 	input, err := s.readInput()
 	if err != nil {
+		fmt.Println("error reading input: ", err)
+		return
+	}
 
+	if input != "" {
+		defer s.addToHistory(input)
 	}
 
 	// support pipes
-
 	if strings.Contains(input, "|") {
 		s.handlePipeCommands(input)
 		return
@@ -167,6 +282,9 @@ func (s *Shell) Prompt() {
 	case "pwd":
 		fmt.Println(s.workingDir)
 		return
+	case "history":
+		fmt.Println(strings.Join(s.history, "\n"))
+		return
 	case "exit":
 		os.Exit(0)
 	}
@@ -174,7 +292,7 @@ func (s *Shell) Prompt() {
 	// external commands
 	_, err = exec.LookPath(commandName)
 	if err != nil {
-		fmt.Println("go-shell: command not found: ", cmd)
+		fmt.Println("gosh: command not found: ", commandName)
 		return
 	}
 
