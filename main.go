@@ -28,14 +28,21 @@ func handlePrompt() {
 		os.Exit(0)
 	}
 
+	_, err = exec.LookPath(command)
+	if err != nil {
+		fmt.Println("go-shell: command not found: ", command)
+		return
+	}
 	cmd := exec.Command(command)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = os.Stderr
 
-	cmd.Run()
-
+	err = cmd.Run()
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 func main() {
