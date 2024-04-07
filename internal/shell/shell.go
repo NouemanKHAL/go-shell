@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path"
 	"strings"
 )
 
 type Shell struct {
 	workingDir string
+	signalChan chan os.Signal
 }
 
 func NewShell() (*Shell, error) {
@@ -22,10 +24,12 @@ func NewShell() (*Shell, error) {
 	}
 
 	return &Shell{
-		workingDir: pwd}, nil
+		workingDir: pwd,
+		signalChan: make(chan os.Signal)}, nil
 }
 
 func (s *Shell) Start(ctx context.Context) error {
+	signal.Notify(s.signalChan, os.Interrupt)
 	for {
 		select {
 		case <-ctx.Done():
@@ -76,6 +80,23 @@ func (s *Shell) parseCommand(input string) *exec.Cmd {
 	return exec.Command(commandName, args...)
 }
 
+func (s *Shell) executeCommand(cmd *exec.Cmd) error {
+	err := cmd.Start()
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case sig := <-s.signalChan:
+			cmd.Process.Signal(sig)
+			break
+		default:
+			return cmd.Wait()
+		}
+	}
+}
+
 func (s *Shell) handlePipeCommands(input string) error {
 	inputs := strings.Split(input, "|")
 
@@ -121,6 +142,10 @@ func (s *Shell) Prompt() {
 
 	// parse the input
 	fields := strings.Fields(input)
+
+	if len(fields) == 0 {
+		return
+	}
 
 	commandName := fields[0]
 	args := fields[1:]
