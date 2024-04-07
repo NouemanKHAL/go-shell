@@ -22,18 +22,22 @@ func handlePrompt() {
 		handleError(err)
 	}
 
-	command := strings.TrimSpace(string(input))
+	trimmedIn := strings.TrimSpace(string(input))
+	fields := strings.Fields(trimmedIn)
+
+	command := fields[0]
+	args := fields[1:]
 
 	if command == "exit" {
 		os.Exit(0)
 	}
-
 	_, err = exec.LookPath(command)
 	if err != nil {
 		fmt.Println("go-shell: command not found: ", command)
 		return
 	}
-	cmd := exec.Command(command)
+
+	cmd := exec.Command(command, args...)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stdin = os.Stdin
