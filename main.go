@@ -24,6 +24,10 @@ func handlePrompt() {
 
 	command := strings.TrimSpace(string(input))
 
+	if command == "exit" {
+		os.Exit(0)
+	}
+
 	cmd := exec.Command(command)
 
 	cmd.Stdout = os.Stdout
@@ -35,5 +39,7 @@ func handlePrompt() {
 }
 
 func main() {
-	handlePrompt()
+	for {
+		handlePrompt()
+	}
 }
