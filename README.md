@@ -33,3 +33,10 @@ gosh > $ ls -a
 gosh > $ pwd
 /Users/noueman.khalikine/.noueman/coding-challenges/go-shell
 ```
+
+## TO DO (Outside of the challenge)
+
+ - [ ] Add support for left and right arrow keys text navigation
+ - [ ] Add support for tab completion
+ - [ ] Add support for colors
+ - [ ] Add support for history search
