@@ -21,7 +21,7 @@ type Shell struct {
 	historyFilepath string
 	history         []string
 	historyPos      int
-	currentInput    string
+	input           string
 	lastPrinted     int
 }
 
@@ -45,6 +45,17 @@ func NewShell() (*Shell, error) {
 	}, nil
 }
 
+func (s *Shell) insertChar(c byte) {
+	s.input += string(c)
+}
+
+func (s *Shell) deleteChar() {
+	if len(s.input) == 0 {
+		return
+	}
+	s.input = s.input[:len(s.input)-1]
+}
+
 func (s *Shell) loadHistory() error {
 	data, err := os.ReadFile(s.historyFilepath)
 	if err != nil {
@@ -58,6 +69,9 @@ func (s *Shell) loadHistory() error {
 func (s *Shell) isValidChar(b byte) bool {
 	if b == '\n' {
 		return true
+	}
+	if b == '[' {
+		return false
 	}
 	r := rune(b)
 	return unicode.IsSpace(r) || unicode.IsDigit(r) || unicode.IsLetter(r) || unicode.IsPunct(r) || unicode.IsSymbol(r)
@@ -91,7 +105,7 @@ func (s *Shell) previousCommand() string {
 		return cmd
 	}
 	fmt.Print("\a")
-	return s.currentInput
+	return s.input
 }
 func (s *Shell) nextCommand() string {
 	idx := len(s.history) - s.historyPos + 1
@@ -101,45 +115,65 @@ func (s *Shell) nextCommand() string {
 		return cmd
 	}
 	fmt.Print("\a")
-	return s.currentInput
+	return s.input
 }
 
 func (s *Shell) readInput() (string, error) {
 	scanner := bufio.NewReader(os.Stdin)
 
-	s.currentInput = ""
+	s.input = ""
 	s.historyPos = 0
-
-	// disable input buffering
-	exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
-	// do not display entered characters on the screen
-	exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
 
 	var prev byte
 	for {
 		s.printPrompt()
+
 		b, err := scanner.ReadByte()
 		if err != nil {
 			fmt.Println("error: ", err.Error())
 			break
 		}
-		if prev == '[' && b == 'A' {
-			s.currentInput = s.previousCommand()
-			prev = 0
-			continue
+
+		if prev == '[' {
+			switch b {
+			case 'A':
+				// up arrow
+				s.input = s.previousCommand()
+				prev = 0
+				continue
+			case 'B':
+				// down arrow
+				s.input = s.nextCommand()
+				prev = 0
+				continue
+			case 'D':
+				// left arrow
+				prev = 0
+				continue
+			case 'C':
+				// right arrow
+				prev = 0
+				continue
+			default:
+				s.insertChar(prev)
+				if s.isValidChar(b) {
+					s.insertChar(b)
+				}
+				prev = b
+				continue
+			}
 		}
-		if prev == '[' && b == 'B' {
-			s.currentInput = s.nextCommand()
-			prev = 0
+
+		if b == '[' {
+			prev = b
 			continue
 		}
 
 		// backspace
 		if b == 127 {
-			newIndex := max(0, len(s.currentInput)-1)
-			s.currentInput = s.currentInput[:newIndex]
+			s.deleteChar()
 		} else if s.isValidChar(b) {
-			s.currentInput += string(b)
+			s.insertChar(b)
 		}
 
 		// enter hit
@@ -152,7 +186,7 @@ func (s *Shell) readInput() (string, error) {
 
 	s.printPrompt()
 
-	trimmedInput := strings.TrimSpace(string(s.currentInput))
+	trimmedInput := strings.TrimSpace(string(s.input))
 	return trimmedInput, nil
 }
 
@@ -160,7 +194,7 @@ func (s *Shell) printPrompt() {
 	if s.lastPrinted > 0 {
 		fmt.Printf("\033[2K\r")
 	}
-	fmt.Printf("gosh > $ %s", s.currentInput)
+	fmt.Printf("gosh > $ %s", s.input)
 	s.lastPrinted = 1
 }
 
@@ -169,7 +203,7 @@ func (s *Shell) changeDir(dir string) error {
 		dir = path.Join(s.workingDir, dir)
 	}
 
-	fmt.Println("changing dir to ", dir)
+	fmt.Println("changing directory to ", dir)
 	_, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -239,6 +273,11 @@ func (s *Shell) addToHistory(input string) {
 }
 
 func (s *Shell) Prompt() {
+	// disable input buffering
+	exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
+	// do not display entered characters on the screen
+	exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
+
 	input, err := s.readInput()
 	if err != nil {
 		fmt.Println("error reading input: ", err)
