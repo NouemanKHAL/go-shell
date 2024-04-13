@@ -84,9 +84,9 @@ func (s *Shell) Start(ctx context.Context) error {
 }
 
 func (s *Shell) previousCommand() string {
-	s.historyPos += 1
-	idx := len(s.history) - s.historyPos
+	idx := len(s.history) - s.historyPos - 1
 	if idx >= 0 && idx < len(s.history) {
+		s.historyPos += 1
 		cmd := s.history[idx]
 		return cmd
 	}
@@ -94,9 +94,9 @@ func (s *Shell) previousCommand() string {
 	return s.currentInput
 }
 func (s *Shell) nextCommand() string {
-	s.historyPos -= 1
-	idx := len(s.history) - s.historyPos
+	idx := len(s.history) - s.historyPos + 1
 	if idx >= 0 && idx < len(s.history) {
+		s.historyPos -= 1
 		cmd := s.history[idx]
 		return cmd
 	}
