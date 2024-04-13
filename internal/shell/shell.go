@@ -284,7 +284,8 @@ func (s *Shell) Prompt() {
 		return
 	}
 
-	if input != "" {
+	// don't update history with empty input, history command, and prompts starting with a space
+	if input != "" && input != "history" && input[0] != ' ' {
 		defer s.addToHistory(input)
 	}
 
