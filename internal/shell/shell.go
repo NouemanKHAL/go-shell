@@ -16,7 +16,6 @@ import (
 const historyFilename = ".gosh_history"
 
 type Shell struct {
-	workingDir      string
 	signalChan      chan os.Signal
 	historyFilepath string
 	history         []string
@@ -26,11 +25,6 @@ type Shell struct {
 }
 
 func NewShell() (*Shell, error) {
-	pwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-
 	userDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -39,7 +33,6 @@ func NewShell() (*Shell, error) {
 	historyPath := path.Join(userDir, historyFilename)
 
 	return &Shell{
-		workingDir:      pwd,
 		signalChan:      make(chan os.Signal),
 		historyFilepath: historyPath,
 	}, nil
@@ -198,21 +191,6 @@ func (s *Shell) printPrompt() {
 	s.lastPrinted = 1
 }
 
-func (s *Shell) changeDir(dir string) error {
-	if !path.IsAbs(dir) {
-		dir = path.Join(s.workingDir, dir)
-	}
-
-	fmt.Println("changing directory to ", dir)
-	_, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	s.workingDir = dir
-	return nil
-
-}
-
 func (s *Shell) parseCommand(input string) *exec.Cmd {
 	fields := strings.Fields(input)
 
@@ -314,13 +292,17 @@ func (s *Shell) Prompt() {
 			fmt.Println("cd: requires 1 argument")
 			return
 		}
-		err := s.changeDir(args[0])
+		err := os.Chdir(args[0])
 		if err != nil {
 			fmt.Println("cd: error: ", err.Error())
 		}
 		return
 	case "pwd":
-		fmt.Println(s.workingDir)
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Println("pwd: error: %s", err.Error())
+		}
+		fmt.Println(wd)
 		return
 	case "history":
 		fmt.Println(strings.Join(s.history, "\n"))
@@ -335,9 +317,6 @@ func (s *Shell) Prompt() {
 		fmt.Println("gosh: command not found: ", commandName)
 		return
 	}
-
-	// set command working dir to the shell working directory
-	cmd.Dir = s.workingDir
 
 	cmd.Stdout = os.Stdout
 	cmd.Stdin = os.Stdin
